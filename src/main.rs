@@ -6,41 +6,61 @@ use std::{
 use anyhow::bail;
 use reqwest::get;
 use serenity::{model::id::ChannelId, prelude::GatewayIntents, utils::Color, Client};
+use serenity::model::prelude::UserId;
+use serenity::prelude::Mentionable;
 use tokio::{task, time::sleep};
 
-use crate::hendrix_response::{Datum, HendrixResponse, TeamEnum};
+use crate::hendrix_response::{Datum, HendrixResponse, Player, TeamEnum};
 
 mod hendrix_response;
 
-const PLAYERS: &[PlayerTag] = &[
-    PlayerTag("finicky", "8260"),
-    PlayerTag("leirbag", "0001"),
-    PlayerTag("mvh", "0001"),
-    PlayerTag("Chaz", "HEHR"),
-    PlayerTag("rvulyobdeifitreC", "0001"),
-];
-
 const URL: &str = "https://api.henrikdev.xyz/valorant/v3/matches/na/";
 
-struct PlayerTag<'a>(&'a str, &'a str);
+struct PlayerData<'a> {
+    name: &'a str,
+    tag: &'a str,
+    discord_id: UserId,
+}
 
-impl Display for PlayerTag<'_> {
+impl<'a> PlayerData<'a> {
+    fn new<T>(name: &'a str, tag: &'a str, discord_id: T) -> Self
+        where T: Into<UserId> {
+        Self {
+            name,
+            tag,
+            discord_id: discord_id.into(),
+        }
+    }
+}
+
+impl Display for PlayerData<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}#{}", self.0, self.1))
+        f.write_fmt(format_args!("{}#{}", self.name, self.tag))
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let mut last_games: Vec<(&PlayerTag, Option<String>)> =
-        PLAYERS.iter().map(|id| (id, None)).collect();
+    let players = vec![
+        PlayerData::new("finicky", "8260", 391061411813523474),
+        PlayerData::new("leirbag", "0001", 430013185056178176),
+        PlayerData::new("mvh", "0001", 412278960458694666),
+        PlayerData::new("Chaz", "HEHR", 408054716723888138),
+        PlayerData::new("rvulyobdeifitreC", "0001", 412278960458694666),
+        PlayerData::new("jeremyawesome", "NA1", 406956734154932235)
+    ];
+
+    let mut last_games = players
+        .iter()
+        .map(|p| (p, None))
+        .collect::<Vec<(&PlayerData, Option<String>)>>();
 
     let mut client = Client::builder(
         "OTYzMjM2NjEwMzA3MTQxNjUw.G8lORi.wUvZlt5uHvRM0ty2UA9XVlCq5in4ic7QuR9qzc",
         GatewayIntents::default(),
     )
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     let ctx = client.cache_and_http.clone();
 
@@ -51,7 +71,7 @@ async fn main() {
     loop {
         // Clone so we can mutate it in the loop
         for (i, (id, last_stored_game)) in last_games.clone().iter().enumerate() {
-            let PlayerTag(name, tag) = id;
+            let PlayerData { name, tag, discord_id } = id;
 
             let game = match lookup_player(name, tag).await {
                 Ok(o) => o,
@@ -92,14 +112,30 @@ async fn main() {
 
             let kd = format!(
                 "{:.2}",
-                player_stats.kills as f64 / player_stats.deaths as f64
+                calculate_kd(player)
             );
+
+            let mut kd_ranking = game
+                .players
+                .all_players
+                .iter()
+                .map(|p| (p, calculate_kd(p)))
+                .collect::<Vec<(&Player, f64)>>();
+            kd_ranking
+                .sort_by(|(_, akb), (_, bkb)| akb.partial_cmp(bkb).unwrap());
+
+            let position = kd_ranking
+                .iter()
+                .enumerate()
+                .find(|(_, (p, _))| p.puuid == player.puuid)
+                .unwrap() // Should NEVER fail
+                .0 + 1; // It's an index so add one
 
             let headshot_percent = format!(
                 "{:.0}%",
                 (player_stats.head_shots as f64
                     / (player_stats.head_shots + player_stats.body_shots + player_stats.leg_shots)
-                        as f64)
+                    as f64)
                     * 100_f64
             );
 
@@ -125,6 +161,7 @@ async fn main() {
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
                 field("KD Ratio", &kd),
+                field("Scoreboard Position", format!("{position}/{}", kd_ranking.len())),
                 field("Head Shot Percentage", headshot_percent),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
@@ -133,7 +170,7 @@ async fn main() {
 
             let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
                 m.embed(|e| {
-                    e.title(format!("{}'s Game on {}", name, metadata.map))
+                    e.title(format!("{}'s Game on {}", discord_id.mention(), metadata.map))
                         .color(if player_team.has_won {
                             Color::DARK_GREEN
                         } else {
@@ -149,12 +186,13 @@ async fn main() {
                         ))
                         .fields(fields)
                 })
-            });
+            }).await;
 
-            match message.await {
-                Err(e) => println!("ERROR: Failed to send message ({id}) -> {e}"),
+            match message {
                 Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
+                Err(e) => println!("ERROR: Failed to send message ({id}) -> {e}"),
             }
+
         }
 
         sleep(Duration::from_secs(60)).await;
@@ -173,6 +211,10 @@ async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
         Some(mut d) if !d.is_empty() => Ok(d.remove(0)),
         _ => bail!("no matches found"),
     }
+}
+
+fn calculate_kd(player: &Player) -> f64 {
+    player.stats.kills as f64 / player.stats.deaths as f64
 }
 
 #[inline]

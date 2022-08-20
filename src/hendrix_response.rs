@@ -76,7 +76,7 @@ pub struct Metadata {
     pub mode: String,
     pub queue: String,
     pub season_id: String,
-    pub platform: PlatformEnum,
+    pub platform: String,
     #[serde(rename = "matchid")]
     pub match_id: String,
     pub region: String,
@@ -165,7 +165,7 @@ pub struct LoadoutValue {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PlatformClass {
     #[serde(rename = "type")]
-    pub platform_type: PlatformEnum,
+    pub platform_type: String,
     pub os: Os,
 }
 
@@ -199,7 +199,7 @@ pub struct Stats {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Round {
     pub winning_team: TeamEnum,
-    pub end_type: EndType,
+    pub end_type: String,
     pub bomb_planted: bool,
     pub bomb_defused: bool,
     pub plant_events: PlantEvents,
@@ -312,23 +312,6 @@ pub struct Team {
 pub enum TeamEnum {
     Blue,
     Red,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum PlatformEnum {
-    #[serde(rename = "PC")]
-    PC,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum EndType {
-    #[serde(rename = "Bomb defused")]
-    BombDefused,
-    #[serde(rename = "Bomb detonated")]
-    BombDetonated,
-    Eliminated,
-    #[serde(rename = "Round timer expired")]
-    RoundTimerExpired,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
