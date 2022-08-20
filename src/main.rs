@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    time::Duration,
+};
 
 use anyhow::bail;
 use reqwest::get;
@@ -9,22 +12,31 @@ use crate::hendrix_response::{Datum, HendrixResponse, TeamEnum};
 
 mod hendrix_response;
 
-const PLAYERS: &[(&str, &str)] = &[
-    ("finicky", "8260"),
-    // ("leirbag", "0001")
+const PLAYERS: &[PlayerTag] = &[
+    PlayerTag("finicky", "8260"),
+    PlayerTag("leirbag", "0001"),
+    PlayerTag("mvh", "0001"),
+    PlayerTag("Chaz", "HEHR"),
 ];
+
 const URL: &str = "https://api.henrikdev.xyz/valorant/v3/matches/na/";
+
+struct PlayerTag<'a>(&'a str, &'a str);
+
+impl Display for PlayerTag<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}#{}", self.0, self.1))
+    }
+}
 
 #[tokio::main]
 async fn main() {
-    let mut last_games: HashMap<&(&str, &str), Option<String>> = HashMap::new();
-    for id in PLAYERS {
-        last_games.insert(id, None);
-    }
+    let mut last_games: Vec<(&PlayerTag, Option<String>)> =
+        PLAYERS.iter().map(|id| (id, None)).collect();
 
     let mut client = Client::builder(
-        "ODg2MjQ4MjE5NTI3NDk5ODE3.YTy0-Q.K2RPLtA5SndZaDUEl1S_Pc35PzM",
-        GatewayIntents::empty(),
+        "OTYzMjM2NjEwMzA3MTQxNjUw.G8lORi.wUvZlt5uHvRM0ty2UA9XVlCq5in4ic7QuR9qzc",
+        GatewayIntents::default(),
     )
     .await
     .unwrap();
@@ -37,12 +49,13 @@ async fn main() {
 
     loop {
         // Clone so we can mutate it in the loop
-        for (id, last_game) in last_games.clone() {
-            let (name, tag) = id;
+        for (i, (id, last_stored_game)) in last_games.clone().iter().enumerate() {
+            let PlayerTag(name, tag) = id;
+
             let game = match lookup_player(name, tag).await {
                 Ok(o) => o,
                 Err(e) => {
-                    println!("Failed to get player info for {:?} -> {e}", id);
+                    println!("Failed to get player info for {} -> {e}", id);
                     continue;
                 }
             };
@@ -58,35 +71,29 @@ async fn main() {
             {
                 Some(o) => o,
                 None => {
-                    println!("Failed to find player in match players ({:?})!", id);
+                    println!("Failed to find player in match players ({})!", id);
                     continue;
                 }
             };
 
             let player_stats = &player.stats;
-            last_games.insert(id, Some(last_game_id.clone()));
+            last_games[i] = (id, Some(last_game_id.clone()));
 
-            if let Some(last_game) = last_game {
-                if last_game == last_game_id {
+            if let Some(last_stored_game) = last_stored_game {
+                if last_stored_game == &last_game_id {
                     continue;
                 }
             } else {
-                // continue;
+                continue;
             }
-
-            // let fields = [
-            //     ("Map", &metadata.map),
-            //     ("Game Length", metadata.game_length),
-            //     ("Rounds", metadata.rounds_played),
-            //     (""),
-            // ];
 
             let kd = (player_stats.kills + player_stats.assists) / player_stats.deaths;
             let headshot_percent = format!(
-                "{}%",
-                (player_stats.head_shots
-                    / (player_stats.head_shots + player_stats.body_shots + player_stats.leg_shots))
-                    * 100
+                "{:.0}%",
+                (player_stats.head_shots as f64
+                    / (player_stats.head_shots + player_stats.body_shots + player_stats.leg_shots)
+                        as f64)
+                    * 100_f64
             );
 
             // this is cancerous but not really a better way to do this that doesn't require just moving it into the other file
@@ -96,33 +103,44 @@ async fn main() {
                 &game.teams.blue
             };
 
+            let fields = vec![
+                field("Rounds", metadata.rounds_played),
+                field(
+                    "Player Team Rounds Won / Lost",
+                    format!("{} / {}", player_team.rounds_won, player_team.rounds_lost),
+                ),
+                field(
+                    "Game Length",
+                    format!("{}min", metadata.game_length / 60000),
+                ),
+                field("Agent", &player.character),
+                field("Kills", player_stats.kills),
+                field("Assists", player_stats.assists),
+                field("Deaths", player_stats.deaths),
+                field("KD Ratio", kd),
+                field("Head Shot Percentage", headshot_percent),
+                field("Score", player_stats.score),
+                field("Player Rank", &player.current_tier_patched),
+                field("Player Level", player.level),
+                field("Map", &metadata.map),
+            ];
+
             let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
                 m.embed(|e| e
                     .title(format!("{}'s Game on {}", name, metadata.map))
                     .color(Color::BLURPLE)
-                    .image(&player.assets.card.large)
+                    .image(&player.assets.card.wide)
                     .thumbnail(&player.assets.agent.bust)
                     .description(format!(
-                        "{name} {} their game on {} with {} kills and {} deaths, and a KD of **{kd}**, and is now at rank {}",
+                        "{name} {} their game on {} with {} kills and {} deaths, and with a KD of **{kd}**, and is now at rank {}",
                         if player_team.has_won { "won" } else { "lost" }, metadata.map, player_stats.kills, player_stats.deaths, player.current_tier_patched
                     ))
-                    .field("Map", &metadata.map, true)
-                    .field("Kills", player_stats.kills, true)
-                    .field("Deaths", player_stats.deaths, true)
-                    .field("KD Ratio", kd, true)
-                    .field("Rounds", metadata.rounds_played, true)
-                    .field("Game Length (minutes)", metadata.game_length / 60, true)
-                    .field("Head Shot Percentage", headshot_percent, true)
-                    .field("Score", player_stats.score, true)
-                    .field("Agent", &player.character, true)
-                    .field("Player Rank", &player.current_tier_patched, true)
-                    .field("Player Level", player.level, true)
-                    .field("Player Rounds Won / Lost", format!("{} / {}", player_team.rounds_won, player_team.rounds_lost), true)
+                    .fields(fields)
                 )
             });
 
             if let Err(e) = message.await {
-                println!("Failed to send message ({:?}) -> {e}", id);
+                println!("Failed to send message ({}) -> {e}", id);
             }
         }
 
@@ -142,4 +160,8 @@ async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
         Some(mut d) if !d.is_empty() => Ok(d.remove(0)),
         _ => bail!("no matches found"),
     }
+}
+
+fn field<A: ToString, B: ToString>(key: A, value: B) -> (String, String, bool) {
+    (key.to_string(), value.to_string(), true)
 }
