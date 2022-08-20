@@ -87,7 +87,8 @@ async fn main() {
                 continue;
             }
 
-            let kd = (player_stats.kills + player_stats.assists) / player_stats.deaths;
+            let kd =
+                (player_stats.kills + player_stats.assists) as f64 / player_stats.deaths as f64;
             let headshot_percent = format!(
                 "{:.0}%",
                 (player_stats.head_shots as f64
@@ -117,23 +118,22 @@ async fn main() {
                 field("Kills", player_stats.kills),
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
-                field("KD Ratio", kd),
+                field("KD Ratio", format!("{:.2}", kd)),
                 field("Head Shot Percentage", headshot_percent),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
-                field("Player Level", player.level),
                 field("Map", &metadata.map),
             ];
 
             let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
                 m.embed(|e| e
                     .title(format!("{}'s Game on {}", name, metadata.map))
-                    .color(Color::BLURPLE)
+                    .color(if player_team.has_won { Color::DARK_GREEN } else { Color::DARK_RED })
                     .image(&player.assets.card.wide)
                     .thumbnail(&player.assets.agent.bust)
                     .description(format!(
-                        "{name} {} their game on {} with {} kills and {} deaths, and with a KD of **{kd}**, and is now at rank {}",
-                        if player_team.has_won { "won" } else { "lost" }, metadata.map, player_stats.kills, player_stats.deaths, player.current_tier_patched
+                        "{name} {} their game on {} with a KD of **{:.2}**, and is now at rank {}",
+                        if player_team.has_won { "won" } else { "lost" }, metadata.map, kd, player.current_tier_patched
                     ))
                     .fields(fields)
                 )
