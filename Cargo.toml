@@ -1,0 +1,14 @@
+[package]
+name = "valorant_tracker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.19.0", features = ["full"] }
+reqwest = { version = "0.11.11", features = ["json"] }
+serde_derive = "1.0.138"
+serde = { version = "1.0.138", features = ["derive"] }
+serenity = { version = "0.11.5", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+anyhow = "1.0.62"
