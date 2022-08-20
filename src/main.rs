@@ -44,7 +44,7 @@ async fn main() {
     let ctx = client.cache_and_http.clone();
 
     task::spawn(async move {
-        client.start().await.expect("Client failed to start");
+        client.start().await.expect("ISSUE: Client failed to start");
     });
 
     loop {
@@ -55,7 +55,7 @@ async fn main() {
             let game = match lookup_player(name, tag).await {
                 Ok(o) => o,
                 Err(e) => {
-                    println!("Failed to get player info for {} -> {e}", id);
+                    println!("ERROR: Failed to get player info for {id} -> {e}");
                     continue;
                 }
             };
@@ -71,7 +71,7 @@ async fn main() {
             {
                 Some(o) => o,
                 None => {
-                    println!("Failed to find player in match players ({})!", id);
+                    println!("ERROR: Failed to find player in match players ({id})!");
                     continue;
                 }
             };
@@ -81,9 +81,11 @@ async fn main() {
 
             if let Some(last_stored_game) = last_stored_game {
                 if last_stored_game == &last_game_id {
+                    println!("INFO: Last stored game is same as newest for {id}");
                     continue;
                 }
             } else {
+                println!("INFO: No game stored, so no need to send match message for {id}");
                 continue;
             }
 
@@ -140,7 +142,9 @@ async fn main() {
             });
 
             if let Err(e) = message.await {
-                println!("Failed to send message ({}) -> {e}", id);
+                println!("ERROR: Failed to send message ({id}) -> {e}");
+            } else {
+                println!("SUCCESS: Sent new match message for {id}");
             }
         }
 
