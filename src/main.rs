@@ -142,7 +142,7 @@ async fn main() {
                         .image(&player.assets.card.wide)
                         .thumbnail(&player.assets.agent.bust)
                         .description(format!(
-                            "{name} **{}** their game on {} with a KD of kd, and is now at rank {}",
+                            "{name} **{}** their game on {} with a KD of {kd}, and is now at rank {}",
                             if player_team.has_won { "won" } else { "lost" },
                             metadata.map,
                             player.current_tier_patched
