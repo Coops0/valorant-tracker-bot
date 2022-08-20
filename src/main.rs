@@ -17,6 +17,7 @@ const PLAYERS: &[PlayerTag] = &[
     PlayerTag("leirbag", "0001"),
     PlayerTag("mvh", "0001"),
     PlayerTag("Chaz", "HEHR"),
+    PlayerTag("rvulyobdeifitreC", "0001"),
 ];
 
 const URL: &str = "https://api.henrikdev.xyz/valorant/v3/matches/na/";
@@ -89,8 +90,11 @@ async fn main() {
                 continue;
             }
 
-            let kd =
-                (player_stats.kills + player_stats.assists) as f64 / player_stats.deaths as f64;
+            let kd = format!(
+                "{:.2}",
+                player_stats.kills as f64 / player_stats.deaths as f64
+            );
+
             let headshot_percent = format!(
                 "{:.0}%",
                 (player_stats.head_shots as f64
@@ -120,7 +124,7 @@ async fn main() {
                 field("Kills", player_stats.kills),
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
-                field("KD Ratio", format!("{:.2}", kd)),
+                field("KD Ratio", kd),
                 field("Head Shot Percentage", headshot_percent),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
@@ -128,27 +132,32 @@ async fn main() {
             ];
 
             let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
-                m.embed(|e| e
-                    .title(format!("{}'s Game on {}", name, metadata.map))
-                    .color(if player_team.has_won { Color::DARK_GREEN } else { Color::DARK_RED })
-                    .image(&player.assets.card.wide)
-                    .thumbnail(&player.assets.agent.bust)
-                    .description(format!(
-                        "{name} {} their game on {} with a KD of **{:.2}**, and is now at rank {}",
-                        if player_team.has_won { "won" } else { "lost" }, metadata.map, kd, player.current_tier_patched
-                    ))
-                    .fields(fields)
-                )
+                m.embed(|e| {
+                    e.title(format!("{}'s Game on {}", name, metadata.map))
+                        .color(if player_team.has_won {
+                            Color::DARK_GREEN
+                        } else {
+                            Color::DARK_RED
+                        })
+                        .image(&player.assets.card.wide)
+                        .thumbnail(&player.assets.agent.bust)
+                        .description(format!(
+                            "{name} **{}** their game on {} with a KD of kd, and is now at rank {}",
+                            if player_team.has_won { "won" } else { "lost" },
+                            metadata.map,
+                            player.current_tier_patched
+                        ))
+                        .fields(fields)
+                })
             });
 
-            if let Err(e) = message.await {
-                println!("ERROR: Failed to send message ({id}) -> {e}");
-            } else {
-                println!("SUCCESS: Sent new match message for {id}");
+            match message.await {
+                Err(e) => println!("ERROR: Failed to send message ({id}) -> {e}"),
+                Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
             }
         }
 
-        sleep(Duration::from_secs(30)).await;
+        sleep(Duration::from_secs(60)).await;
     }
 }
 
@@ -166,6 +175,7 @@ async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
     }
 }
 
+#[inline]
 fn field<A: ToString, B: ToString>(key: A, value: B) -> (String, String, bool) {
     (key.to_string(), value.to_string(), true)
 }
