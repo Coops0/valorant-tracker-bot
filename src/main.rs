@@ -124,7 +124,7 @@ async fn main() {
                 field("Kills", player_stats.kills),
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
-                field("KD Ratio", kd),
+                field("KD Ratio", &kd),
                 field("Head Shot Percentage", headshot_percent),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
