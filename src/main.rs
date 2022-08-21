@@ -5,9 +5,13 @@ use std::{
 
 use anyhow::bail;
 use reqwest::get;
-use serenity::{model::id::ChannelId, prelude::GatewayIntents, utils::Color, Client};
-use serenity::model::prelude::UserId;
-use serenity::prelude::Mentionable;
+use serenity::{
+    model::id::ChannelId,
+    prelude::GatewayIntents,
+    utils::Color,
+    Client,
+    model::prelude::UserId
+};
 use tokio::{task, time::sleep};
 
 use crate::hendrix_response::{Datum, HendrixResponse, Player, TeamEnum};
@@ -47,7 +51,7 @@ async fn main() {
         PlayerData::new("mvh", "0001", 412278960458694666),
         PlayerData::new("Chaz", "HEHR", 408054716723888138),
         PlayerData::new("rvulyobdeifitreC", "0001", 412278960458694666),
-        PlayerData::new("jeremyawesome", "NA1", 406956734154932235)
+        PlayerData::new("jeremyawesome", "NA1", 406956734154932235),
     ];
 
     let mut last_games = players
@@ -122,7 +126,7 @@ async fn main() {
                 .map(|p| (p, calculate_kd(p)))
                 .collect::<Vec<(&Player, f64)>>();
             kd_ranking
-                .sort_by(|(_, akb), (_, bkb)| akb.partial_cmp(bkb).unwrap());
+                .sort_by(|(_, akb), (_, bkb)| bkb.partial_cmp(akb).unwrap());
 
             let position = kd_ranking
                 .iter()
@@ -161,16 +165,21 @@ async fn main() {
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
                 field("KD Ratio", &kd),
-                field("Scoreboard Position", format!("{position}/{}", kd_ranking.len())),
+                field("Leaderboard Position", position),
                 field("Head Shot Percentage", headshot_percent),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
                 field("Map", &metadata.map),
             ];
 
+            let username = match discord_id.to_user(&ctx.http).await {
+                Ok(u) => u.name,
+                Err(_) => name.to_string(),
+            };
+
             let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
                 m.embed(|e| {
-                    e.title(format!("{}'s Game on {}", discord_id.mention(), metadata.map))
+                    e.title(format!("{}'s Game on {}", username, metadata.map))
                         .color(if player_team.has_won {
                             Color::DARK_GREEN
                         } else {
@@ -192,7 +201,6 @@ async fn main() {
                 Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
                 Err(e) => println!("ERROR: Failed to send message ({id}) -> {e}"),
             }
-
         }
 
         sleep(Duration::from_secs(60)).await;
