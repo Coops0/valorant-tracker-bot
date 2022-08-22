@@ -10,7 +10,7 @@ use serenity::{
     prelude::GatewayIntents,
     utils::Color,
     Client,
-    model::prelude::UserId
+    model::prelude::UserId,
 };
 use tokio::{task, time::sleep};
 
@@ -135,14 +135,6 @@ async fn main() {
                 .unwrap() // Should NEVER fail
                 .0 + 1; // It's an index so add one
 
-            let headshot_percent = format!(
-                "{:.0}%",
-                (player_stats.head_shots as f64
-                    / (player_stats.head_shots + player_stats.body_shots + player_stats.leg_shots)
-                    as f64)
-                    * 100_f64
-            );
-
             // this is cancerous but not really a better way to do this that doesn't require just moving it into the other file
             let player_team = if player.team == TeamEnum::Red {
                 &game.teams.red
@@ -166,7 +158,7 @@ async fn main() {
                 field("Deaths", player_stats.deaths),
                 field("KD Ratio", &kd),
                 field("Leaderboard Position", position),
-                field("Head Shot Percentage", headshot_percent),
+                field("Head Shot Percentage", format!("{}%", calculate_headshot_percentage(player) as i64)),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
                 field("Map", &metadata.map),
@@ -223,6 +215,12 @@ async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
 
 fn calculate_kd(player: &Player) -> f64 {
     player.stats.kills as f64 / player.stats.deaths as f64
+}
+
+fn calculate_headshot_percentage(player: &Player) -> f64 {
+    let all_shots = (player.stats.head_shots + player.stats.body_shots + player.stats.leg_shots) as f64;
+
+    (player.stats.head_shots as f64 / all_shots) * 100_f64
 }
 
 #[inline]
