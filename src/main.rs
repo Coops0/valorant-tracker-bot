@@ -1,4 +1,3 @@
-use std::borrow::BorrowMut;
 use std::{
     fmt::{Display, Formatter},
     time::Duration,
@@ -235,13 +234,8 @@ async fn main() {
             last_data.last_mmr_change_timestamp = Some(mmr.date_raw);
             last_games[i] = (id, last_data);
 
-            if let Some(last_mmr_change_timestamp) = last_mmr_change_timestamp {
-                if last_mmr_change_timestamp == mmr.date_raw {
-                    println!("INFO: Last MMR is same as newest for {id}");
-                    continue;
-                }
-            } else {
-                println!("INFO: No MMR stored so no need to update for {id}");
+            if last_mmr_change_timestamp.unwrap_or_default() == mmr.date_raw {
+                println!("INFO: Last MMR is same as newest for {id}");
                 continue;
             }
 
