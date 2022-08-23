@@ -3,13 +3,13 @@ extern crate serde_derive;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct HendrixResponse {
+pub struct HendrixMatchesResponse {
     pub status: i64,
-    pub data: Option<Vec<Datum>>,
+    pub data: Option<Vec<MatchDatum>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Datum {
+pub struct MatchDatum {
     pub metadata: Metadata,
     pub players: Players,
     pub teams: Teams,

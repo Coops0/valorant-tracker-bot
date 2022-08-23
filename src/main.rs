@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::{
     fmt::{Display, Formatter},
     time::Duration,
@@ -6,17 +7,15 @@ use std::{
 use anyhow::bail;
 use reqwest::get;
 use serenity::{
-    model::id::ChannelId,
-    prelude::GatewayIntents,
-    utils::Color,
-    Client,
-    model::prelude::UserId,
+    model::id::ChannelId, model::prelude::UserId, prelude::GatewayIntents, utils::Color, Client,
 };
 use tokio::{task, time::sleep};
 
-use crate::hendrix_response::{Datum, HendrixResponse, Player, TeamEnum};
+use crate::hendrix_matches_response::{HendrixMatchesResponse, MatchDatum, Player, TeamEnum};
+use crate::hendrix_mmr_response::{HendrixMmrResponse, MmrDatum};
 
-mod hendrix_response;
+mod hendrix_matches_response;
+mod hendrix_mmr_response;
 
 const BASE_URL: &str = "https://api.henrikdev.xyz";
 const MATCH_URL: &str = "/valorant/v3/matches/na";
@@ -30,7 +29,9 @@ struct PlayerData<'a> {
 
 impl<'a> PlayerData<'a> {
     fn new<T>(name: &'a str, tag: &'a str, discord_id: T) -> Self
-        where T: Into<UserId> {
+    where
+        T: Into<UserId>,
+    {
         Self {
             name,
             tag,
@@ -42,6 +43,21 @@ impl<'a> PlayerData<'a> {
 impl Display for PlayerData<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}#{}", self.name, self.tag))
+    }
+}
+
+#[derive(Clone)]
+struct LastData {
+    last_game_id: Option<String>,
+    last_mmr_change_timestamp: Option<i64>,
+}
+
+impl LastData {
+    fn new() -> Self {
+        Self {
+            last_game_id: None,
+            last_mmr_change_timestamp: None,
+        }
     }
 }
 
@@ -58,15 +74,15 @@ async fn main() {
 
     let mut last_games = players
         .iter()
-        .map(|p| (p, None))
-        .collect::<Vec<(&PlayerData, Option<String>)>>();
+        .map(|p| (p, LastData::new()))
+        .collect::<Vec<(&PlayerData, LastData)>>();
 
     let mut client = Client::builder(
         "OTYzMjM2NjEwMzA3MTQxNjUw.G8lORi.wUvZlt5uHvRM0ty2UA9XVlCq5in4ic7QuR9qzc",
         GatewayIntents::default(),
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
 
     let ctx = client.cache_and_http.clone();
 
@@ -76,10 +92,20 @@ async fn main() {
 
     loop {
         // Clone so we can mutate it in the loop
-        for (i, (id, last_stored_game)) in last_games.clone().iter().enumerate() {
-            let PlayerData { name, tag, discord_id } = id;
+        for (i, (id, last_data)) in last_games.clone().iter().enumerate() {
+            let PlayerData {
+                name,
+                tag,
+                discord_id,
+            } = id;
 
-            let game = match lookup_player(name, tag).await {
+            let mut last_data = last_data.clone();
+            let LastData {
+                last_game_id,
+                last_mmr_change_timestamp,
+            } = last_data;
+
+            let game = match lookup_player_matches(name, tag).await {
                 Ok(o) => o,
                 Err(e) => {
                     println!("ERROR: Failed to get player info for {id} -> {e}");
@@ -88,7 +114,7 @@ async fn main() {
             };
 
             let metadata = &game.metadata;
-            let last_game_id = metadata.match_id.clone();
+            let newest_last_game_id = metadata.match_id.clone();
 
             let player = match game
                 .players
@@ -104,10 +130,12 @@ async fn main() {
             };
 
             let player_stats = &player.stats;
-            last_games[i] = (id, Some(last_game_id.clone()));
 
-            if let Some(last_stored_game) = last_stored_game {
-                if last_stored_game == &last_game_id {
+            last_data.last_game_id = Some(newest_last_game_id.clone());
+            last_games[i] = (id, last_data.clone());
+
+            if let Some(last_stored_game) = last_game_id {
+                if last_stored_game == newest_last_game_id {
                     println!("INFO: Last stored game is same as newest for {id}");
                     continue;
                 }
@@ -116,10 +144,7 @@ async fn main() {
                 continue;
             }
 
-            let kd = format!(
-                "{:.2}",
-                calculate_kd(player)
-            );
+            let kd = format!("{:.2}", calculate_kd(player));
 
             let mut kd_ranking = game
                 .players
@@ -127,15 +152,15 @@ async fn main() {
                 .iter()
                 .map(|p| (p, calculate_kd(p)))
                 .collect::<Vec<(&Player, f64)>>();
-            kd_ranking
-                .sort_by(|(_, akb), (_, bkb)| bkb.partial_cmp(akb).unwrap());
+            kd_ranking.sort_by(|(_, akb), (_, bkb)| bkb.partial_cmp(akb).unwrap());
 
             let position = kd_ranking
                 .iter()
                 .enumerate()
                 .find(|(_, (p, _))| p.puuid == player.puuid)
                 .unwrap() // Should NEVER fail
-                .0 + 1; // It's an index so add one
+                .0
+                + 1; // It's an index so add one
 
             // this is cancerous but not really a better way to do this that doesn't require just moving it into the other file
             let player_team = if player.team == TeamEnum::Red {
@@ -160,7 +185,10 @@ async fn main() {
                 field("Deaths", player_stats.deaths),
                 field("KD Ratio", &kd),
                 field("Leaderboard Position", position),
-                field("Head Shot Percentage", format!("{}%", calculate_headshot_percentage(player) as i64)),
+                field(
+                    "Head Shot Percentage",
+                    format!("{}%", calculate_headshot_percentage(player) as i64),
+                ),
                 field("Score", player_stats.score),
                 field("Player Rank", &player.current_tier_patched),
                 field("Map", &metadata.map),
@@ -193,7 +221,66 @@ async fn main() {
 
             match message {
                 Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
-                Err(e) => println!("ERROR: Failed to send message ({id}) -> {e}"),
+                Err(e) => println!("ERROR: Failed to send match message ({id}) -> {e}"),
+            }
+
+            let mmr = match lookup_player_mmr(name, tag).await {
+                Ok(o) => o,
+                Err(e) => {
+                    println!("ERROR: Failed to get mmr change for {id} -> {e}");
+                    continue;
+                }
+            };
+
+            last_data.last_mmr_change_timestamp = Some(mmr.date_raw);
+            last_games[i] = (id, last_data);
+
+            if let Some(last_mmr_change_timestamp) = last_mmr_change_timestamp {
+                if last_mmr_change_timestamp == mmr.date_raw {
+                    println!("INFO: Last MMR is same as newest for {id}");
+                    continue;
+                }
+            } else {
+                println!("INFO: No MMR stored so no need to update for {id}");
+                continue;
+            }
+
+            let fields = vec![
+                field("MMR Change", mmr.mmr_change_to_last_game),
+                field("Current Tier", &mmr.current_tier_patched),
+                field("Rating in Tier", mmr.ranking_in_tier),
+                field("Elo", mmr.elo),
+            ];
+
+            let message = ChannelId(1011757101258903552)
+                .send_message(&ctx.http, |m| {
+                    m.embed(|e| {
+                        e.title(format!("{}'s MMR Change", username))
+                            .color(if mmr.mmr_change_to_last_game > 0 {
+                                Color::DARK_GREEN
+                            } else {
+                                Color::DARK_RED
+                            })
+                            .image(&mmr.images.large)
+                            .thumbnail(&mmr.images.small)
+                            .description(format!(
+                                "{name} {} **{}** MMR on their last game, and is now at rank {}.",
+                                if mmr.mmr_change_to_last_game > 0 {
+                                    "gained"
+                                } else {
+                                    "lost"
+                                },
+                                mmr.mmr_change_to_last_game,
+                                mmr.current_tier_patched
+                            ))
+                            .fields(fields)
+                    })
+                })
+                .await;
+
+            match message {
+                Ok(_) => println!("SUCCESS: Sent new MMR message for {id}"),
+                Err(e) => println!("ERROR: Failed to send MMR message ({id}) -> {e}"),
             }
         }
 
@@ -201,12 +288,15 @@ async fn main() {
     }
 }
 
-async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
-    let response = get(format!("{BASE_URL}{MATCH_URL}/{name}/{tag}?filter=competitive&size=1")).await?;
-    let parsed = response.json::<HendrixResponse>().await?;
+async fn lookup_player_matches(name: &str, tag: &str) -> anyhow::Result<MatchDatum> {
+    let response = get(format!(
+        "{BASE_URL}{MATCH_URL}/{name}/{tag}?filter=competitive&size=1"
+    ))
+    .await?;
+    let parsed = response.json::<HendrixMatchesResponse>().await?;
 
     if parsed.status != 200 {
-        bail!("got status of {} instead of 200.", parsed.status);
+        bail!("got status of {} instead of 200", parsed.status);
     }
 
     match parsed.data {
@@ -215,12 +305,29 @@ async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
     }
 }
 
+async fn lookup_player_mmr(name: &str, tag: &str) -> anyhow::Result<MmrDatum> {
+    let response = get(format!("{BASE_URL}{MMR_HISTORY_URL}/{name}/{tag}?size=1"))
+        .await?
+        .json::<HendrixMmrResponse>()
+        .await?;
+
+    if response.status != 200 {
+        bail!("got status of {} instead of 200", response.status);
+    }
+
+    match response.data {
+        Some(mut d) if !d.is_empty() => Ok(d.remove(0)),
+        _ => bail!("no mmr found"),
+    }
+}
+
 fn calculate_kd(player: &Player) -> f64 {
     player.stats.kills as f64 / player.stats.deaths as f64
 }
 
 fn calculate_headshot_percentage(player: &Player) -> f64 {
-    let all_shots = (player.stats.head_shots + player.stats.body_shots + player.stats.leg_shots) as f64;
+    let all_shots =
+        (player.stats.head_shots + player.stats.body_shots + player.stats.leg_shots) as f64;
 
     (player.stats.head_shots as f64 / all_shots) * 100_f64
 }
