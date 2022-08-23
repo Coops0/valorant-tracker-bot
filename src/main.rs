@@ -18,7 +18,9 @@ use crate::hendrix_response::{Datum, HendrixResponse, Player, TeamEnum};
 
 mod hendrix_response;
 
-const URL: &str = "https://api.henrikdev.xyz/valorant/v3/matches/na/";
+const BASE_URL: &str = "https://api.henrikdev.xyz";
+const MATCH_URL: &str = "/valorant/v3/matches/na";
+const MMR_HISTORY_URL: &str = "/valorant/v1/mmr-history";
 
 struct PlayerData<'a> {
     name: &'a str,
@@ -200,7 +202,7 @@ async fn main() {
 }
 
 async fn lookup_player(name: &str, tag: &str) -> anyhow::Result<Datum> {
-    let response = get(format!("{URL}{name}/{tag}?filter=competitive")).await?;
+    let response = get(format!("{BASE_URL}{MATCH_URL}/{name}/{tag}?filter=competitive&size=1")).await?;
     let parsed = response.json::<HendrixResponse>().await?;
 
     if parsed.status != 200 {
