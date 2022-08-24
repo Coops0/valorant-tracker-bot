@@ -2,16 +2,21 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::bail;
 use reqwest::get;
-use serenity::model::id::ChannelId;
-use serenity::{utils::Color, CacheAndHttp};
+use serenity::{model::id::ChannelId, model::Timestamp, utils::Color, CacheAndHttp};
 use tokio::time::sleep;
 
-use crate::mmr_tracker::lookup_player_mmr;
 use crate::{
-    HendrixMatchesResponse, MatchDatum, Player, PlayerData, TeamEnum, BASE_URL, MATCH_URL,
+    mmr_tracker::lookup_player_mmr, HendrixMatchesResponse, MatchDatum, Player, PlayerData,
+    TeamEnum, BASE_URL, MATCH_URL,
 };
 
-pub async fn game_tracker_thread(players: Vec<PlayerData<'_>>, ctx: Arc<CacheAndHttp>) {
+pub async fn game_tracker_thread<T: Into<ChannelId>>(
+    players: Vec<PlayerData<'_>>,
+    ctx: Arc<CacheAndHttp>,
+    channel: T,
+) {
+    let channel = channel.into();
+
     let mut last_games = players
         .iter()
         .map(|p| (p, LastData::new()))
@@ -124,7 +129,7 @@ pub async fn game_tracker_thread(players: Vec<PlayerData<'_>>, ctx: Arc<CacheAnd
                 last_games[i] = (id, last_data);
             }
 
-            let message = ChannelId(1010348129771589782).send_message(&ctx.http, |m| {
+            let message = channel.send_message(&ctx.http, |m| {
                 m.embed(|e| {
                     e.title(format!("{}'s Game on {}", id.username(), metadata.map))
                         .color(if player_team.has_won {
@@ -134,6 +139,7 @@ pub async fn game_tracker_thread(players: Vec<PlayerData<'_>>, ctx: Arc<CacheAnd
                         })
                         .image(&player.assets.card.wide)
                         .thumbnail(&player.assets.agent.bust)
+                        .timestamp(Timestamp::from_unix_timestamp(game.metadata.game_start).unwrap_or_else(|_| Timestamp::now()))
                         .description(format!(
                             "{name} **{}** their game on {} with a KD of {kd}, and is now at rank {}",
                             if player_team.has_won { "won" } else { "lost" },

@@ -108,7 +108,7 @@ pub struct Player {
     pub session_playtime: SessionPlaytime,
     pub behavior: Behavior,
     pub platform: PlatformClass,
-    pub assets: AllPlayerAssets,
+    pub assets: PlayerAssets,
     pub stats: Stats,
     pub economy: AllPlayerEconomy,
     pub damage_made: i64,
@@ -116,7 +116,7 @@ pub struct Player {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AllPlayerAssets {
+pub struct PlayerAssets {
     pub card: Card,
     pub agent: Agent,
 }

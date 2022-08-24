@@ -7,8 +7,12 @@ use tokio::time::sleep;
 
 use crate::{HendrixMmrResponse, MmrDatum, PlayerData, BASE_URL, MMR_HISTORY_URL};
 
-pub async fn mmr_tracker_thread(players: Vec<PlayerData<'_>>, ctx: Arc<CacheAndHttp>) {
-    let channel = ChannelId(1011839991376248902);
+pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
+    players: Vec<PlayerData<'_>>,
+    ctx: Arc<CacheAndHttp>,
+    channel: T,
+) {
+    let channel = channel.into();
 
     let mut mmrs = players
         .iter()

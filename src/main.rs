@@ -1,15 +1,17 @@
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
-use serenity::model::id::UserId;
-use serenity::prelude::GatewayIntents;
-use serenity::{CacheAndHttp, Client};
-use tokio::task;
+use serenity::{model::id::UserId, prelude::GatewayIntents, CacheAndHttp, Client};
+use tokio::{main, task};
 
-use crate::game_tracker::game_tracker_thread;
-use crate::hendrix_matches_response::{HendrixMatchesResponse, MatchDatum, Player, TeamEnum};
-use crate::hendrix_mmr_response::{HendrixMmrResponse, MmrDatum};
-use crate::mmr_tracker::mmr_tracker_thread;
+use crate::{
+    game_tracker::game_tracker_thread,
+    hendrix_matches_response::{HendrixMatchesResponse, MatchDatum, Player, TeamEnum},
+    hendrix_mmr_response::{HendrixMmrResponse, MmrDatum},
+    mmr_tracker::mmr_tracker_thread,
+};
 
 mod game_tracker;
 mod hendrix_matches_response;
@@ -20,7 +22,7 @@ pub const BASE_URL: &str = "https://api.henrikdev.xyz";
 pub const MATCH_URL: &str = "/valorant/v3/matches/na";
 pub const MMR_HISTORY_URL: &str = "/valorant/v1/mmr-history/na";
 
-#[tokio::main]
+#[main]
 async fn main() {
     let mut players = vec![
         PlayerData::new("finicky", "8260", 391061411813523474),
@@ -45,8 +47,13 @@ async fn main() {
         player.populate_discord_name(&ctx).await;
     }
 
-    task::spawn(game_tracker_thread(players.clone(), ctx.clone()));
-    task::spawn(mmr_tracker_thread(players, ctx));
+    task::spawn(game_tracker_thread(
+        players.clone(),
+        ctx.clone(),
+        1010348129771589782,
+    ));
+
+    task::spawn(mmr_tracker_thread(players, ctx, 1011839991376248902));
 
     client.start().await.expect("ERROR: Client failed to start");
 }
