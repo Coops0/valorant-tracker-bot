@@ -2,7 +2,7 @@ extern crate serde_derive;
 
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HendrixMmrResponse {
     pub status: i64,
     pub name: Option<String>,
@@ -10,7 +10,7 @@ pub struct HendrixMmrResponse {
     pub data: Option<Vec<MmrDatum>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MmrDatum {
     #[serde(rename = "currenttier")]
     pub current_tier: i64,
@@ -24,7 +24,7 @@ pub struct MmrDatum {
     pub date_raw: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Images {
     pub small: String,
     pub large: String,

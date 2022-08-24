@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::{Display, Formatter},
     time::Duration,
 };
@@ -18,8 +19,9 @@ mod hendrix_mmr_response;
 
 const BASE_URL: &str = "https://api.henrikdev.xyz";
 const MATCH_URL: &str = "/valorant/v3/matches/na";
-const MMR_HISTORY_URL: &str = "/valorant/v1/mmr-history";
+const MMR_HISTORY_URL: &str = "/valorant/v1/mmr-history/na";
 
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 struct PlayerData<'a> {
     name: &'a str,
     tag: &'a str,
@@ -69,6 +71,7 @@ async fn main() {
         PlayerData::new("Chaz", "HEHR", 408054716723888138),
         PlayerData::new("rvulyobdeifitreC", "0001", 412278960458694666),
         PlayerData::new("jeremyawesome", "NA1", 406956734154932235),
+        PlayerData::new("bakon", "8597", 435920046238466049),
     ];
 
     let mut last_games = players
@@ -87,6 +90,89 @@ async fn main() {
 
     task::spawn(async move {
         client.start().await.expect("ISSUE: Client failed to start");
+    });
+
+    let current_ctx = ctx.clone();
+    let our_players = players.clone();
+    task::spawn(async move {
+        let channel = ChannelId(1011839991376248902);
+
+        let mut mmrs = our_players
+            .iter()
+            .map(|p| (p, None))
+            .collect::<HashMap<&PlayerData, Option<MmrDatum>>>();
+
+        let mut message = match channel.messages(&current_ctx.http, |b| b).await {
+            Ok(mut m) if !m.is_empty() => m.remove(0),
+            _ => channel
+                .send_message(&current_ctx.http, |m| m.content("wait bruh"))
+                .await
+                .expect("Failed to send initial message"),
+        };
+
+        loop {
+            let mut was_changed = false;
+
+            for (player, old_data) in mmrs.clone() {
+                let mmr = match lookup_player_mmr(player.name, player.tag).await {
+                    Ok(mmr) => mmr,
+                    Err(e) => {
+                        println!("ERROR: Failed to get MMR for {player} -> {e}");
+                        continue;
+                    }
+                };
+
+                if old_data.map(|m| m.elo).unwrap_or_default() != mmr.elo {
+                    was_changed = true;
+                    println!("INFO: Detected MMR change in {player}.");
+                }
+
+                mmrs.insert(player, Some(mmr));
+            }
+
+            if was_changed {
+                let mut content = "```yml".to_string();
+
+                let mut alphabetically = mmrs
+                    .iter()
+                    .collect::<Vec<(&&PlayerData, &Option<MmrDatum>)>>();
+
+                dbg!(&alphabetically
+                    .iter()
+                    .map(|(a, _)| a.name)
+                    .collect::<Vec<&str>>());
+                alphabetically.sort_by(|(a, _), (b, _)| {
+                    a.name
+                        .first_char()
+                        .to_ascii_lowercase()
+                        .cmp(&b.name.first_char().to_ascii_lowercase())
+                });
+                dbg!(&alphabetically
+                    .iter()
+                    .map(|(a, _)| a.name)
+                    .collect::<Vec<&str>>());
+
+                for (player, data) in alphabetically {
+                    if let Some(data) = data {
+                        content = format!(
+                            "{content}\n{}: {} @ {} MMR",
+                            player.name, data.current_tier_patched, data.ranking_in_tier
+                        );
+                    }
+                }
+
+                content = format!("{content}\n```");
+                match message
+                    .edit(&current_ctx.http, |m| m.content(content))
+                    .await
+                {
+                    Err(e) => println!("ERROR: Failed to update mmr message -> {e}"),
+                    Ok(_) => println!("INFO: Successfully updated MMR message."),
+                }
+            }
+
+            sleep(Duration::from_secs(60)).await;
+        }
     });
 
     loop {
@@ -168,7 +254,7 @@ async fn main() {
                 &game.teams.blue
             };
 
-            let fields = vec![
+            let mut fields = vec![
                 field("Rounds", metadata.rounds_played),
                 field(
                     "Player Team Rounds Won / Lost",
@@ -188,10 +274,39 @@ async fn main() {
                     "Head Shot Percentage",
                     format!("{}%", calculate_headshot_percentage(player) as i64),
                 ),
-                field("Score", player_stats.score),
+                field(
+                    "Average Combat Core",
+                    player_stats.score / game.rounds.len() as i64,
+                ),
                 field("Player Rank", &player.current_tier_patched),
                 field("Map", &metadata.map),
             ];
+
+            match lookup_player_mmr(name, tag).await {
+                Ok(mmr) => {
+                    last_data.last_mmr_change_timestamp = Some(mmr.date_raw);
+                    last_games[i] = (id, last_data);
+
+                    if last_mmr_change_timestamp.unwrap_or_default() == mmr.date_raw {
+                        println!("INFO: Last MMR is same as newest for {id}");
+                    } else {
+                        fields.push(field(
+                            "MMR Change",
+                            format!(
+                                "{}{}",
+                                if mmr.mmr_change_to_last_game > 0 {
+                                    "+"
+                                } else {
+                                    ""
+                                },
+                                mmr.mmr_change_to_last_game
+                            ),
+                        ));
+                        fields.push(field("Elo", mmr.ranking_in_tier));
+                    }
+                }
+                Err(e) => println!("ERROR: Failed to get mmr change for {id} -> {e}"),
+            };
 
             let username = match discord_id.to_user(&ctx.http).await {
                 Ok(u) => u.name,
@@ -221,60 +336,6 @@ async fn main() {
             match message {
                 Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
                 Err(e) => println!("ERROR: Failed to send match message ({id}) -> {e}"),
-            }
-
-            let mmr = match lookup_player_mmr(name, tag).await {
-                Ok(o) => o,
-                Err(e) => {
-                    println!("ERROR: Failed to get mmr change for {id} -> {e}");
-                    continue;
-                }
-            };
-
-            last_data.last_mmr_change_timestamp = Some(mmr.date_raw);
-            last_games[i] = (id, last_data);
-
-            if last_mmr_change_timestamp.unwrap_or_default() == mmr.date_raw {
-                println!("INFO: Last MMR is same as newest for {id}");
-                continue;
-            }
-
-            let fields = vec![
-                field("MMR Change", mmr.mmr_change_to_last_game),
-                field("Current Tier", &mmr.current_tier_patched),
-                field("Rating in Tier", mmr.ranking_in_tier),
-                field("Elo", mmr.elo),
-            ];
-
-            let message = ChannelId(1011757101258903552)
-                .send_message(&ctx.http, |m| {
-                    m.embed(|e| {
-                        e.title(format!("{}'s MMR Change", username))
-                            .color(if mmr.mmr_change_to_last_game > 0 {
-                                Color::DARK_GREEN
-                            } else {
-                                Color::DARK_RED
-                            })
-                            .image(&mmr.images.large)
-                            .thumbnail(&mmr.images.small)
-                            .description(format!(
-                                "{name} {} **{}** MMR on their last game, and is now at rank {}.",
-                                if mmr.mmr_change_to_last_game > 0 {
-                                    "gained"
-                                } else {
-                                    "lost"
-                                },
-                                mmr.mmr_change_to_last_game,
-                                mmr.current_tier_patched
-                            ))
-                            .fields(fields)
-                    })
-                })
-                .await;
-
-            match message {
-                Ok(_) => println!("SUCCESS: Sent new MMR message for {id}"),
-                Err(e) => println!("ERROR: Failed to send MMR message ({id}) -> {e}"),
             }
         }
 
@@ -329,4 +390,14 @@ fn calculate_headshot_percentage(player: &Player) -> f64 {
 #[inline]
 fn field<A: ToString, B: ToString>(key: A, value: B) -> (String, String, bool) {
     (key.to_string(), value.to_string(), true)
+}
+
+trait FirstChar {
+    fn first_char(&self) -> char;
+}
+
+impl FirstChar for str {
+    fn first_char(&self) -> char {
+        self.chars().take(1).last().unwrap()
+    }
 }
