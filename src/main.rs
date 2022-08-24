@@ -264,7 +264,6 @@ async fn main() {
                     "Average Combat Core",
                     player_stats.score / game.rounds.len() as i64,
                 ),
-                field("Player Rank", &player.current_tier_patched),
                 field("Map", &metadata.map),
             ];
 
@@ -288,7 +287,10 @@ async fn main() {
                                 mmr.mmr_change_to_last_game
                             ),
                         ));
-                        fields.push(field("Elo", mmr.ranking_in_tier));
+                        fields.push(field(
+                            "Rank",
+                            format!("{} @ {} MMR", mmr.current_tier_patched, mmr.ranking_in_tier),
+                        ));
                     }
                 }
                 Err(e) => println!("ERROR: Failed to get mmr change for {id} -> {e}"),
