@@ -133,32 +133,18 @@ async fn main() {
             if was_changed {
                 let mut content = "```yml".to_string();
 
-                let mut alphabetically = mmrs
+                let mut sorted = mmrs
                     .iter()
-                    .collect::<Vec<(&&PlayerData, &Option<MmrDatum>)>>();
+                    .filter(|(_, d)| d.is_some())
+                    .map(|(p, d)| (p, d.as_ref().unwrap()))
+                    .collect::<Vec<(&&PlayerData, &MmrDatum)>>();
+                sorted.sort_by(|(_, a), (_, b)| b.elo.cmp(&a.elo));
 
-                dbg!(&alphabetically
-                    .iter()
-                    .map(|(a, _)| a.name)
-                    .collect::<Vec<&str>>());
-                alphabetically.sort_by(|(a, _), (b, _)| {
-                    a.name
-                        .first_char()
-                        .to_ascii_lowercase()
-                        .cmp(&b.name.first_char().to_ascii_lowercase())
-                });
-                dbg!(&alphabetically
-                    .iter()
-                    .map(|(a, _)| a.name)
-                    .collect::<Vec<&str>>());
-
-                for (player, data) in alphabetically {
-                    if let Some(data) = data {
-                        content = format!(
-                            "{content}\n{}: {} @ {} MMR",
-                            player.name, data.current_tier_patched, data.ranking_in_tier
-                        );
-                    }
+                for (player, data) in sorted {
+                    content = format!(
+                        "{content}\n{}: {} @ {} MMR",
+                        player.name, data.current_tier_patched, data.ranking_in_tier
+                    );
                 }
 
                 content = format!("{content}\n```");
@@ -390,14 +376,4 @@ fn calculate_headshot_percentage(player: &Player) -> f64 {
 #[inline]
 fn field<A: ToString, B: ToString>(key: A, value: B) -> (String, String, bool) {
     (key.to_string(), value.to_string(), true)
-}
-
-trait FirstChar {
-    fn first_char(&self) -> char;
-}
-
-impl FirstChar for str {
-    fn first_char(&self) -> char {
-        self.chars().take(1).last().unwrap()
-    }
 }
