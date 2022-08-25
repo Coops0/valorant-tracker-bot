@@ -95,6 +95,7 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
             };
 
             let mut fields = vec![
+                field("Map", &metadata.map),
                 field("Rounds", metadata.rounds_played),
                 field(
                     "Player Team Rounds Won / Lost",
@@ -115,11 +116,37 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                     format!("{}%", calculate_headshot_percentage(player) as i64),
                 ),
                 field(
-                    "Average Combat Core",
+                    "Average Combat Score",
                     player_stats.score / game.rounds.len() as i64,
                 ),
-                field("Map", &metadata.map),
             ];
+
+            if let Some(playtime) = player.session_playtime.minutes {
+                fields.push(field("Session Playtime", format!("{}min", playtime)));
+            }
+
+            let behavior = &player.behavior;
+            if behavior.afk_rounds > 0_f64 {
+                fields.push(field("AFK Rounds", behavior.afk_rounds));
+            }
+
+            if behavior.rounds_in_spawn > 0_f64 {
+                fields.push(field("Rounds in Spawn", behavior.rounds_in_spawn));
+            }
+
+            if player.party_id.is_some() {
+                let partied_with = game
+                    .players
+                    .all_players
+                    .iter()
+                    .filter(|p| p.party_id == player.party_id && p.name != player.name)
+                    .map(|p| format!("{}#{}", p.name, p.tag))
+                    .collect::<Vec<String>>();
+
+                if !partied_with.is_empty() {
+                    fields.push(field("Partied With", partied_with.join(", ")))
+                }
+            }
 
             if let Some(mmr_fields) = get_mmr_fields(id, &mut last_data).await {
                 for field in mmr_fields {
@@ -138,7 +165,7 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                             Color::DARK_RED
                         })
                         .image(&player.assets.card.wide)
-                        .thumbnail(&player.assets.agent.bust)
+                        .thumbnail(&player.assets.agent.small)
                         .timestamp(Timestamp::from_unix_timestamp(game.metadata.game_start).unwrap_or_else(|_| Timestamp::now()))
                         .description(format!(
                             "{name} **{}** their game on {} with a KD of {kd}, and is now at rank {}",
@@ -223,14 +250,15 @@ async fn lookup_player_matches(name: &str, tag: &str) -> anyhow::Result<MatchDat
     let response = get(format!(
         "{BASE_URL}{MATCH_URL}/{name}/{tag}?filter=competitive&size=1"
     ))
+    .await?
+    .json::<HendrixMatchesResponse>()
     .await?;
-    let parsed = response.json::<HendrixMatchesResponse>().await?;
 
-    if parsed.status != 200 {
-        bail!("got status of {} instead of 200", parsed.status);
+    if response.status != 200 {
+        bail!("got status of {} instead of 200", response.status);
     }
 
-    match parsed.data {
+    match response.data {
         Some(mut d) if !d.is_empty() => Ok(d.remove(0)),
         _ => bail!("no matches found"),
     }
