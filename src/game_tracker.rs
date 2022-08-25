@@ -69,14 +69,15 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                 continue;
             }
 
-            let kd = format!("{:.2}", calculate_kd(player));
+            let kd = calculate_kd(player, false);
+            let rounds = game.rounds.len() as i64;
 
             let mut kd_ranking = game
                 .players
                 .all_players
                 .iter()
-                .map(|p| (p, calculate_kd(p)))
-                .collect::<Vec<(&Player, f64)>>();
+                .map(|p| (p, p.stats.score / rounds))
+                .collect::<Vec<(&Player, i64)>>();
             kd_ranking.sort_by(|(_, akb), (_, bkb)| bkb.partial_cmp(akb).unwrap());
 
             let position = kd_ranking
@@ -98,7 +99,7 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                 field("Map", &metadata.map),
                 field("Rounds", metadata.rounds_played),
                 field(
-                    "Player Team Rounds Won / Lost",
+                    "Rounds Won / Lost",
                     format!("{} / {}", player_team.rounds_won, player_team.rounds_lost),
                 ),
                 field(
@@ -109,16 +110,14 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                 field("Kills", player_stats.kills),
                 field("Assists", player_stats.assists),
                 field("Deaths", player_stats.deaths),
-                field("KD Ratio", &kd),
+                field("KD", &kd),
+                field("KAD", calculate_kd(player, true)),
                 field("Leaderboard Position", position),
                 field(
-                    "Head Shot Percentage",
+                    "Head Shots",
                     format!("{}%", calculate_headshot_percentage(player) as i64),
                 ),
-                field(
-                    "Average Combat Score",
-                    player_stats.score / game.rounds.len() as i64,
-                ),
+                field("Avg. Combat Score", player_stats.score / rounds),
             ];
 
             if let Some(playtime) = player.session_playtime.minutes {
@@ -230,8 +229,14 @@ impl LastData {
     }
 }
 
-fn calculate_kd(player: &Player) -> f64 {
-    player.stats.kills as f64 / player.stats.deaths as f64
+fn calculate_kd(player: &Player, assists: bool) -> String {
+    let mut kills = player.stats.kills;
+
+    if assists {
+        kills += player.stats.deaths;
+    }
+
+    format!("{:.2}", kills as f64 / player.stats.deaths as f64)
 }
 
 fn calculate_headshot_percentage(player: &Player) -> f64 {
