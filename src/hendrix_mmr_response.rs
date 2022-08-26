@@ -5,8 +5,6 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HendrixMmrResponse {
     pub status: i64,
-    pub name: Option<String>,
-    pub tag: Option<String>,
     pub data: Option<Vec<MmrDatum>>,
 }
 

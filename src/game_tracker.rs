@@ -69,7 +69,6 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                 continue;
             }
 
-            let kd = calculate_kd(player, false);
             let rounds = game.rounds.len() as i64;
 
             let mut kd_ranking = game
@@ -107,11 +106,21 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                     format!("{}min", metadata.game_length / 60000),
                 ),
                 field("Agent", &player.character),
-                field("Kills", player_stats.kills),
-                field("Assists", player_stats.assists),
-                field("Deaths", player_stats.deaths),
-                field("KD", &kd),
-                field("KAD", calculate_kd(player, true)),
+                field(
+                    "K / A / D",
+                    format!(
+                        "{} / {} / {}",
+                        player_stats.kills, player_stats.assists, player_stats.deaths
+                    ),
+                ),
+                field(
+                    "KD / KAD",
+                    format!(
+                        "{} / {}",
+                        calculate_kd(player, false),
+                        calculate_kd(player, true)
+                    ),
+                ),
                 field("Leaderboard Position", position),
                 field(
                     "Head Shots",
@@ -153,28 +162,36 @@ pub async fn game_tracker_thread<T: Into<ChannelId>>(
                 }
 
                 last_games[i] = (id, last_data);
+            } else {
+                fields.push(field("Current Rank", &player.current_tier_patched))
             }
 
-            let message = channel.send_message(&ctx.http, |m| {
-                m.embed(|e| {
-                    e.title(format!("{}'s Game on {}", id.username(), metadata.map))
-                        .color(if player_team.has_won {
-                            Color::DARK_GREEN
-                        } else {
-                            Color::DARK_RED
-                        })
-                        .image(&player.assets.card.wide)
-                        .thumbnail(&player.assets.agent.small)
-                        .timestamp(Timestamp::from_unix_timestamp(game.metadata.game_start).unwrap_or_else(|_| Timestamp::now()))
-                        .description(format!(
-                            "{name} **{}** their game on {} with a KD of {kd}, and is now at rank {}",
+            let message = channel
+                .send_message(&ctx.http, |m| {
+                    m.embed(|e| {
+                        e.title(format!("{}'s Game on {}", id.username(), metadata.map))
+                            .color(if player_team.has_won {
+                                Color::DARK_GREEN
+                            } else {
+                                Color::DARK_RED
+                            })
+                            .image(&player.assets.card.wide)
+                            .thumbnail(&player.assets.agent.small)
+                            .timestamp(
+                                Timestamp::from_unix_timestamp(game.metadata.game_start)
+                                    .unwrap_or_else(|_| Timestamp::now()),
+                            )
+                            .description(format!(
+                            "{name} **{}** their game on {} with a KD of {}, and is now at rank {}",
                             if player_team.has_won { "won" } else { "lost" },
                             metadata.map,
+                            calculate_kd(player, false),
                             player.current_tier_patched
                         ))
-                        .fields(fields)
+                            .fields(fields)
+                    })
                 })
-            }).await;
+                .await;
 
             match message {
                 Ok(_) => println!("SUCCESS: Sent new match message for {id}"),
@@ -233,7 +250,7 @@ fn calculate_kd(player: &Player, assists: bool) -> String {
     let mut kills = player.stats.kills;
 
     if assists {
-        kills += player.stats.deaths;
+        kills += player.stats.assists;
     }
 
     format!("{:.2}", kills as f64 / player.stats.deaths as f64)
@@ -260,7 +277,11 @@ async fn lookup_player_matches(name: &str, tag: &str) -> anyhow::Result<MatchDat
     .await?;
 
     if response.status != 200 {
-        bail!("got status of {} instead of 200", response.status);
+        bail!(
+            "got status of {} instead of 200 -> {:?}",
+            response.status,
+            response
+        );
     }
 
     match response.data {

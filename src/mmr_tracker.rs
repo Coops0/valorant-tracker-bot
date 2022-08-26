@@ -2,10 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use reqwest::get;
-use serenity::{model::id::ChannelId, CacheAndHttp};
+use serenity::{CacheAndHttp, model::id::ChannelId};
 use tokio::time::sleep;
 
-use crate::{HendrixMmrResponse, MmrDatum, PlayerData, BASE_URL, MMR_HISTORY_URL};
+use crate::{BASE_URL, HendrixMmrResponse, MMR_HISTORY_URL, MmrDatum, PlayerData};
 
 pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
     players: Vec<PlayerData<'_>>,
@@ -72,8 +72,8 @@ pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
             }
 
             match message.edit(&ctx.http, |m| m.content(content)).await {
+                Ok(_) => println!("SUCCESS: Successfully updated MMR message."),
                 Err(e) => println!("ERROR: Failed to update mmr message -> {e}"),
-                Ok(_) => println!("INFO: Successfully updated MMR message."),
             }
         }
 
@@ -88,7 +88,11 @@ pub async fn lookup_player_mmr(name: &str, tag: &str) -> anyhow::Result<MmrDatum
         .await?;
 
     if response.status != 200 {
-        bail!("got status of {} instead of 200", response.status);
+        bail!(
+            "got status of {} instead of 200 -> {:?}",
+            response.status,
+            response
+        );
     }
 
     match response.data {

@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use serenity::{model::id::UserId, prelude::GatewayIntents, CacheAndHttp, Client};
+use serenity::{CacheAndHttp, Client, model::id::UserId, prelude::GatewayIntents};
 use tokio::{main, task};
 
 use crate::{
@@ -32,17 +32,17 @@ async fn main() {
         PlayerData::new("rvulyobdeifitreC", "0001", 412278960458694666),
         PlayerData::new("jeremyawesome", "NA1", 406956734154932235),
         PlayerData::new("bakon", "8597", 435920046238466049),
+        PlayerData::new("CoopyPoopy", "whojo", 788436069003165718),
     ];
 
     let mut client = Client::builder(
         "OTYzMjM2NjEwMzA3MTQxNjUw.G8lORi.wUvZlt5uHvRM0ty2UA9XVlCq5in4ic7QuR9qzc",
         GatewayIntents::default(),
     )
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     let ctx = client.cache_and_http.clone();
-
     for player in &mut players {
         player.populate_discord_name(&ctx).await;
     }
@@ -69,8 +69,8 @@ pub struct PlayerData<'a> {
 
 impl<'a> PlayerData<'a> {
     fn new<T>(name: &'a str, tag: &'a str, discord_id: T) -> Self
-    where
-        T: Into<UserId>,
+        where
+            T: Into<UserId>,
     {
         Self {
             name,
