@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::bail;
+use anyhow::{bail, Result};
 use reqwest::get;
 use serenity::{CacheAndHttp, model::id::ChannelId};
 use tokio::time::sleep;
@@ -81,7 +81,7 @@ pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
     }
 }
 
-pub async fn lookup_player_mmr(name: &str, tag: &str) -> anyhow::Result<MmrDatum> {
+pub async fn lookup_player_mmr(name: &str, tag: &str) -> Result<MmrDatum> {
     let response = get(format!("{BASE_URL}{MMR_HISTORY_URL}/{name}/{tag}?size=1"))
         .await?
         .json::<HendrixMmrResponse>()

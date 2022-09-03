@@ -10,11 +10,11 @@ use crate::{
     TeamEnum, BASE_URL, MATCH_URL,
 };
 
-pub async fn game_tracker_thread<T: Into<ChannelId>>(
+pub async fn game_tracker_thread<T>(
     players: Vec<PlayerData<'_>>,
     ctx: Arc<CacheAndHttp>,
     channel: T,
-) {
+) where T: Into<ChannelId> {
     let channel = channel.into();
 
     let mut last_games = players
@@ -223,7 +223,7 @@ async fn get_mmr_fields(
     };
 
     Some(vec![
-        field("MMR Change", format!("{op}{}", mmr.mmr_change_to_last_game)),
+        field("MMR", format!("{op}{}", mmr.mmr_change_to_last_game)),
         field(
             "Rank",
             format!("{} @ {} MMR", mmr.current_tier_patched, mmr.ranking_in_tier),

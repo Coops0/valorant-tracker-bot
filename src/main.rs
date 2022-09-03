@@ -81,7 +81,11 @@ impl<'a> PlayerData<'a> {
     }
 
     pub async fn populate_discord_name(&mut self, ctx: &Arc<CacheAndHttp>) {
-        self.cached_discord_name = self.discord_id.to_user(ctx).await.map(|u| u.name).ok();
+        self.cached_discord_name = self.discord_id
+        .to_user(ctx)
+        .await
+        .map(|u| u.name)
+        .ok();
     }
 
     pub fn username(&self) -> String {
