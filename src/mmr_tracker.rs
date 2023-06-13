@@ -2,13 +2,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{bail, Result};
 use reqwest::get;
-use serenity::{CacheAndHttp, model::id::ChannelId};
+use serenity::{model::id::ChannelId, CacheAndHttp};
 use tokio::time::sleep;
 
-use crate::{BASE_URL, HendrixMmrResponse, MMR_HISTORY_URL, MmrDatum, PlayerData};
+use crate::{HendrixMmrResponse, MmrDatum, PlayerData, BASE_URL, MMR_HISTORY_URL};
 
 pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
-    players: Vec<PlayerData<'_>>,
+    players: Vec<PlayerData>,
     ctx: Arc<CacheAndHttp>,
     channel: T,
 ) {
@@ -31,7 +31,7 @@ pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
         let mut was_changed = false;
 
         for (player, old_data) in mmrs.clone() {
-            let mmr = match lookup_player_mmr(player.name, player.tag).await {
+            let mmr = match lookup_player_mmr(&player.name, &player.tag).await {
                 Ok(mmr) => mmr,
                 Err(e) => {
                     println!("ERROR: Failed to get MMR for {player} -> {e}");
@@ -58,16 +58,9 @@ pub async fn mmr_tracker_thread<T: Into<ChannelId>>(
             sorted.sort_by(|(_, a), (_, b)| b.elo.cmp(&a.elo));
 
             for (player, data) in sorted {
-                let name = match player.cached_discord_name {
-                    Some(ref discord_name) if discord_name != player.name => {
-                        format!("{} ({discord_name})", player.name)
-                    }
-                    _ => player.name.to_string(),
-                };
-
                 content = format!(
-                    "{content}\n{name} -> `{} @ {} MMR`",
-                    data.current_tier_patched, data.ranking_in_tier
+                    "{content}\n{} -> `{} @ {} MMR`",
+                    player.name, data.current_tier_patched, data.ranking_in_tier
                 );
             }
 

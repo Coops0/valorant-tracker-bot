@@ -10,11 +10,10 @@ use crate::{
     TeamEnum, BASE_URL, MATCH_URL,
 };
 
-pub async fn game_tracker_thread<T>(
-    players: Vec<PlayerData<'_>>,
-    ctx: Arc<CacheAndHttp>,
-    channel: T,
-) where T: Into<ChannelId> {
+pub async fn game_tracker_thread<T>(players: Vec<PlayerData>, ctx: Arc<CacheAndHttp>, channel: T)
+where
+    T: Into<ChannelId>,
+{
     let channel = channel.into();
 
     let mut last_games = players
@@ -169,7 +168,7 @@ pub async fn game_tracker_thread<T>(
             let message = channel
                 .send_message(&ctx.http, |m| {
                     m.embed(|e| {
-                        e.title(format!("{}'s Game on {}", id.username(), metadata.map))
+                        e.title(format!("{}'s Game on {}", id, metadata.map))
                             .color(if player_team.has_won {
                                 Color::DARK_GREEN
                             } else {
@@ -204,10 +203,10 @@ pub async fn game_tracker_thread<T>(
 }
 
 async fn get_mmr_fields(
-    player: &PlayerData<'_>,
+    player: &PlayerData,
     last_data: &mut LastData,
 ) -> Option<Vec<(String, String, bool)>> {
-    let mmr = lookup_player_mmr(player.name, player.tag).await.ok()?;
+    let mmr = lookup_player_mmr(&player.name, &player.tag).await.ok()?;
 
     let last_mmr_change_timestamp = last_data.last_mmr_change_timestamp.unwrap_or_default();
 
